@@ -4,7 +4,7 @@
 #include <dirent.h>
 #include <sys/stat.h>
 #include <openssl/md5.h>
-//#include "src/LibIntegr/libintegrctrl.h"
+#include <unistd.h>
 
 #define DB_FILENAME "integrity.db"
 #define MAX_PATH_LEN 1024
@@ -92,6 +92,48 @@ IntegrityRecord* read_integrity_record(FILE* fp) {
     return record;
 }
 
+
+int check_dir_integrity(FILE* db_file, int parent_id, char* dirname, FileInfo* files, int* num_files) {
+    int is_integrity_ok = 1;
+
+    // Ищем все записи в базе данных с parent_id
+    fseek(db_file, sizeof(IntegrityRecord), SEEK_SET);
+    while (!feof(db_file)) {
+        IntegrityRecord* record = read_integrity_record(db_file);
+        if (record->parent_id == parent_id && strcmp(record->name, ".") != 0 && strcmp(record->name, "..") != 0) {
+            if (strcmp(record->type, "directory") == 0) {
+                // Рекурсивно проверяем целостность директории
+                char path[MAX_PATH_LEN];
+                snprintf(path, sizeof(path), "%s/%s", dirname, record->name);
+                is_integrity_ok &= check_dir_integrity(db_file, record->id, path, files, num_files);
+            } else if (strcmp(record->type, "file") == 0) {
+                // Ищем файл с таким же именем и сравниваем хеш-функции MD5
+                int found = 0;
+                for (int i = 0; i < *num_files; i++) {
+                    if (strcmp(files[i].filename, record->name) == 0) {
+                        found = 1;
+                        if (strcmp(files[i].md5sum, record->md5) != 0) {
+                            printf("Error: file %s has been modified\n", files[i].filename);
+                            is_integrity_ok = 0;
+                        }
+                    }
+                }
+                if (!found) {
+                    printf("Error: file %s is missing\n", record->name);
+                    is_integrity_ok = 0;
+                }
+            }
+        }
+        free(record->name);
+        free(record->type);
+        if (strcmp(record->type, "file") == 0)
+            free(record->md5);
+        free(record);
+    }
+
+    return is_integrity_ok;
+}
+
 int is_directory(const char *path) {
     struct stat st;
     if (stat(path, &st) != 0) {
@@ -157,10 +199,12 @@ void save_integrity_info(char *dir_path) {
             dir_record.parent_id = root.id;
             dir_record.md5 = NULL;
             write_integrity_record(db_file, &dir_record);
-        } else {
+        } 
+        
+        else 
+        {
             // Вычисляем хеш-функцию MD5 для файла
-            char* md5sum = malloc(MD5_DIGEST_LENGTH * sizeof(char));
-            md5_hash(path);
+            char* md5sum = md5_hash(ent->d_name);
             // Создаем запись для файла
             IntegrityRecord file_record;
             file_record.id = get_new_id();
@@ -199,6 +243,8 @@ void save_integrity_info(char *dir_path) {
     printf("Integrity information saved to file: %s\n", DB_FILENAME);
 }
 
+
+
 int check_integrity() {
     FILE *db_file = fopen(DB_FILENAME, "rb");
     if (db_file == NULL) {
@@ -207,9 +253,8 @@ int check_integrity() {
     }
 
     // Считываем первую запись, это должна быть запись корневой директории
-    IntegrityRecord root_record;
-    fread(&root_record, sizeof(IntegrityRecord), 1, db_file);
-    if (strcmp(root_record.name, ".") != 0 || strcmp(root_record.type, "directory") != 0) {
+    IntegrityRecord *root_record = read_integrity_record(db_file);
+    if (strcmp(root_record->name, ".") != 0 || strcmp(root_record->type, "directory") != 0) {
         fprintf(stderr, "Error: invalid database file format\n");
         fclose(db_file);
         exit(EXIT_FAILURE);
@@ -221,7 +266,7 @@ int check_integrity() {
 
     // Рекурсивно проверяем целостность директории
     int is_integrity_ok = 1;
-    is_integrity_ok &= check_dir_integrity(db_file, root_record.id, ".", files, &num_files);
+    //is_integrity_ok &= check_dir_integrity(db_file, root_record->id, ".", files, &num_files);
 
     fclose(db_file);
 
@@ -265,44 +310,3 @@ int main(int argc, char **argv) {
     return EXIT_SUCCESS;
 }
 
-
-int check_dir_integrity(FILE* db_file, int parent_id, char* dirname, FileInfo* files, int* num_files) {
-    int is_integrity_ok = 1;
-
-    // Ищем все записи в базе данных с parent_id
-    fseek(db_file, sizeof(IntegrityRecord), SEEK_SET);
-    while (!feof(db_file)) {
-        IntegrityRecord* record = read_integrity_record(db_file);
-        if (record->parent_id == parent_id && strcmp(record->name, ".") != 0 && strcmp(record->name, "..") != 0) {
-            if (strcmp(record->type, "directory") == 0) {
-                // Рекурсивно проверяем целостность директории
-                char path[MAX_PATH_LEN];
-                snprintf(path, sizeof(path), "%s/%s", dirname, record->name);
-                is_integrity_ok &= check_dir_integrity(db_file, record->id, path, files, num_files);
-            } else if (strcmp(record->type, "file") == 0) {
-                // Ищем файл с таким же именем и сравниваем хеш-функции MD5
-                int found = 0;
-                for (int i = 0; i < *num_files; i++) {
-                    if (strcmp(files[i].filename, record->name) == 0) {
-                        found = 1;
-                        if (strcmp(files[i].md5sum, record->md5) != 0) {
-                            printf("Error: file %s has been modified\n", files[i].filename);
-                            is_integrity_ok = 0;
-                        }
-                    }
-                }
-                if (!found) {
-                    printf("Error: file %s is missing\n", record->name);
-                    is_integrity_ok = 0;
-                }
-            }
-        }
-        free(record->name);
-        free(record->type);
-        if (strcmp(record->type, "file") == 0)
-            free(record->md5);
-        free(record);
-    }
-
-    return is_integrity_ok;
-}
