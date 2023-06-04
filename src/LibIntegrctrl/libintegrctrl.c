@@ -1,36 +1,32 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <dirent.h>
-#include <sys/stat.h>
-#include <openssl/md5.h>
-#include <unistd.h>
+// #include <dirent.h>
+// #include <sys/stat.h>
+// #include <openssl/md5.h>
+// #include <unistd.h>
+#include "libintegrctrl.h"
 
-#define DB_FILENAME "integrity.db"
-#define MAX_PATH_LEN 1024
-#define MD5_DIGEST_LENGTH 16
-#define MAX_NUM_FILES 100
+// typedef struct {
+//     char filename[MAX_PATH_LEN];
+//     char* md5sum;
+// } FileInfo;
 
-typedef struct {
-    char filename[MAX_PATH_LEN];
-    char* md5sum;
-} FileInfo;
+// FileInfo file_info[MAX_NUM_FILES];
+// int num_files = 0;
 
-FileInfo file_info[MAX_NUM_FILES];
-int num_files = 0;
+// typedef struct {
+//     int id;             // Уникальный идентификатор записи
+//     char* name;         // Имя директории или файла
+//     char* type;         // Тип: директория или файл
+//     int parent_id;      // Уникальный идентификатор родительской директории
+//     char* md5;          // Хеш-функция MD5, вычисленная для содержимого файла
+// } IntegrityRecord;
 
-typedef struct {
-    int id;             // Уникальный идентификатор записи
-    char* name;         // Имя директории или файла
-    char* type;         // Тип: директория или файл
-    int parent_id;      // Уникальный идентификатор родительской директории
-    char* md5;          // Хеш-функция MD5, вычисленная для содержимого файла
-} IntegrityRecord;
-
-int get_new_id() {
-    static int id = 1;  // Счетчик идентификаторов, начинается с 1
-    return id++;
-}
+// int get_new_id() {
+//     static int id = 1;  // Счетчик идентификаторов, начинается с 1
+//     return id++;
+// }
 
 char* md5_hash(char* filename) {
     unsigned char digest[MD5_DIGEST_LENGTH];
@@ -54,6 +50,7 @@ char* md5_hash(char* filename) {
 
     for(int i = 0; i < MD5_DIGEST_LENGTH; i++)
         sprintf(result+i*2, "%02x", digest[i]);
+    result[MD5_DIGEST_LENGTH*2]=0;
     return result; // free the dynamically allocated memory
 }
 
@@ -95,22 +92,49 @@ IntegrityRecord* read_integrity_record(FILE* fp) {
 
 int check_dir_integrity(FILE* db_file, int parent_id, char* dirname, FileInfo* files, int* num_files) {
     int is_integrity_ok = 1;
-
+    
+    char current_dir[MAX_PATH_LEN];
+    if (getcwd(current_dir, sizeof(current_dir)) == NULL) {
+        fprintf(stderr, "Error getting current directory\n");
+        exit(EXIT_FAILURE);
+    }
+	
+	char *local_dir = strrchr(dirname, '/');
+	if(local_dir == NULL) {
+		local_dir = dirname;
+	} else {
+		local_dir++;
+	}
+    // Изменяем текущую директорию на dir_path
+    if (chdir(local_dir) != 0) {
+        fprintf(stderr, "Error changing directory: %s\n", dirname);
+        exit(EXIT_FAILURE);
+    }
+	
     // Ищем все записи в базе данных с parent_id
-    fseek(db_file, sizeof(IntegrityRecord), SEEK_SET);
+    //fseek(db_file, sizeof(IntegrityRecord), SEEK_SET);
     while (!feof(db_file)) {
         IntegrityRecord* record = read_integrity_record(db_file);
         if (record->parent_id == parent_id && strcmp(record->name, ".") != 0 && strcmp(record->name, "..") != 0) {
             if (strcmp(record->type, "directory") == 0) {
                 // Рекурсивно проверяем целостность директории
+                
                 char path[MAX_PATH_LEN];
                 snprintf(path, sizeof(path), "%s/%s", dirname, record->name);
+                long int ppos = ftell(db_file);
                 is_integrity_ok &= check_dir_integrity(db_file, record->id, path, files, num_files);
+                fseek(db_file, ppos, SEEK_SET);
             } else if (strcmp(record->type, "file") == 0) {
                 // Ищем файл с таким же именем и сравниваем хеш-функции MD5
                 int found = 0;
+                printf("CHECKING FILE: %s\n", record->name);
                 for (int i = 0; i < *num_files; i++) {
-                    if (strcmp(files[i].filename, record->name) == 0) {
+                	char *filename=strrchr(files[i].filename, '/')+1;
+                	int dirFilelen = filename-files[i].filename-1;
+                	char filedir[MAX_PATH_LEN];
+                	strncpy(filedir, files[i].filename, dirFilelen);
+                	filedir[dirFilelen]=0;
+                    if (strcmp(filedir, dirname)==0 && strcmp(filename, record->name) == 0) {
                         found = 1;
                         if (strcmp(files[i].md5sum, record->md5) != 0) {
                             printf("Error: file %s has been modified\n", files[i].filename);
@@ -130,7 +154,7 @@ int check_dir_integrity(FILE* db_file, int parent_id, char* dirname, FileInfo* f
             free(record->md5);
         free(record);
     }
-
+	chdir(current_dir);
     return is_integrity_ok;
 }
 
@@ -142,18 +166,14 @@ int is_directory(const char *path) {
     return S_ISDIR(st.st_mode);
 }
 
-void save_integrity_info(char *dir_path) {
+void save_integrity_info(FILE *db_file, char *dir_path, int rootid) {
     DIR *dir = opendir(dir_path);
     if (dir == NULL) {
         fprintf(stderr, "Error opening directory: %s\n", dir_path);
         exit(EXIT_FAILURE);
     }
 
-    FILE *db_file = fopen(DB_FILENAME, "wb");
-    if (db_file == NULL) {
-        fprintf(stderr, "Error creating database file\n");
-        exit(EXIT_FAILURE);
-    }
+    
 
     FileInfo file;
     // Получаем текущую директорию
@@ -170,13 +190,19 @@ void save_integrity_info(char *dir_path) {
     }
 
     // Записываем информацию о корневой директории
-    IntegrityRecord root;
-    root.id = get_new_id();
-    root.name = strdup(".");
-    root.type = strdup("directory");
-    root.parent_id = 0;
-    root.md5 = NULL;
-    write_integrity_record(db_file, &root);
+    
+    if(rootid == -1) {
+    	IntegrityRecord root;
+	    root.id = get_new_id();
+	    root.name = strdup(".");
+	    root.type = strdup("directory");
+	    root.parent_id = 0;
+	    root.md5 = NULL;
+	    write_integrity_record(db_file, &root);
+	    
+	    rootid = root.id;
+	}
+    
 
     // Обрабатываем каждый файл или директорию в текущей директории
     struct dirent *ent;
@@ -186,19 +212,21 @@ void save_integrity_info(char *dir_path) {
 
         char path[MAX_PATH_LEN];
         snprintf(path, sizeof(path), "%s/%s", dir_path, ent->d_name);
-
-        if (is_directory(path)) {
+		printf("%s\n", path);
+        if (is_directory(ent->d_name)) {
             // Рекурсивно обрабатываем поддиректорию
-            save_integrity_info(path);
+            
 
             // Создаем запись для директории
             IntegrityRecord dir_record;
             dir_record.id = get_new_id();
             dir_record.name = strdup(ent->d_name);
             dir_record.type = strdup("directory");
-            dir_record.parent_id = root.id;
+            dir_record.parent_id = rootid;
             dir_record.md5 = NULL;
             write_integrity_record(db_file, &dir_record);
+            
+            save_integrity_info(db_file, ent->d_name, dir_record.id);
         } 
         
         else 
@@ -210,7 +238,7 @@ void save_integrity_info(char *dir_path) {
             file_record.id = get_new_id();
             file_record.name = strdup(ent->d_name);
             file_record.type = strdup("file");
-            file_record.parent_id = root.id;
+            file_record.parent_id = rootid;
             file_record.md5 = md5sum;
             write_integrity_record(db_file, &file_record);
 
@@ -233,7 +261,6 @@ void save_integrity_info(char *dir_path) {
         }
     }
 
-    fclose(db_file);
 
     if (chdir(current_dir) != 0) {
         fprintf(stderr, "Error changing directory: %s\n", current_dir);
@@ -244,13 +271,91 @@ void save_integrity_info(char *dir_path) {
 }
 
 
+void get_files(const char *dir_path) {
+	
+	char *local_dir = strrchr(dir_path, '/');
+	if(local_dir==NULL) {
+		local_dir = dir_path-1;
+	}
+    DIR *dir = opendir(local_dir+1);
+    if (dir == NULL) {
+        fprintf(stderr, "Error opening directory: %s\n", dir_path);
+        exit(EXIT_FAILURE);
+    }
+    FileInfo file;
+    // Получаем текущую директорию
+    char current_dir[MAX_PATH_LEN];
+    if (getcwd(current_dir, sizeof(current_dir)) == NULL) {
+        fprintf(stderr, "Error getting current directory\n");
+        exit(EXIT_FAILURE);
+    }
 
-int check_integrity() {
+    // Изменяем текущую директорию на dir_path
+    if (chdir(local_dir+1) != 0) {
+        fprintf(stderr, "Error changing directory: %s\n", dir_path);
+        exit(EXIT_FAILURE);
+    }
+
+    // Записываем информацию о корневой директории
+
+    // Обрабатываем каждый файл или директорию в текущей директории
+    struct dirent *ent;
+    while ((ent = readdir(dir)) != NULL) {
+        if (strcmp(ent->d_name, ".") == 0 || strcmp(ent->d_name, "..") == 0)
+            continue;
+
+        char path[MAX_PATH_LEN];
+        snprintf(path, sizeof(path), "%s/%s", dir_path, ent->d_name);
+        if (is_directory(ent->d_name)) {
+            // Рекурсивно обрабатываем поддиректорию
+            get_files(path);
+        } 
+        
+        else 
+        {
+            // Вычисляем хеш-функцию MD5 для файла
+            char* md5sum = md5_hash(ent->d_name);
+            // Создаем запись для файла
+            // // Запоминаем имя файла и его хеш-функцию для дальнейшей проверки целостности
+            // FileInfo file_info;
+            // snprintf(file_info.filename, sizeof(file_info.filename), "%s/%s", dir_path, ent->d_name);
+            // file_info.md5sum = md5sum;
+            // Добавляем информацию о файле в массив
+            if (num_files < MAX_NUM_FILES)
+            {
+                snprintf(file_info[num_files].filename, sizeof(file_info[num_files].filename), "%s/%s", dir_path, ent->d_name);
+                file_info[num_files].md5sum = md5sum;
+                num_files++;
+            }
+            else
+            {
+                printf("Error: too many files to store in memory\n");
+            }
+        }
+    }
+
+    if (chdir(current_dir) != 0) {
+        fprintf(stderr, "Error changing directory: %s\n", current_dir);
+        exit(EXIT_FAILURE);
+    }
+
+}
+
+int check_integrity(const char* dirpath) {
     FILE *db_file = fopen(DB_FILENAME, "rb");
     if (db_file == NULL) {
         fprintf(stderr, "Error opening database file\n");
         exit(EXIT_FAILURE);
     }
+    
+    
+    
+    if (chdir(dirpath) != 0) {
+        fprintf(stderr, "Error changing directory: %s\n", dirpath);
+        exit(EXIT_FAILURE);
+    }
+    
+    get_files(".");
 
     // Считываем первую запись, это должна быть запись корневой директории
     IntegrityRecord *root_record = read_integrity_record(db_file);
@@ -261,12 +366,14 @@ int check_integrity() {
     }
 
     // Создаем массив с информацией о файлах
-    FileInfo* files = (FileInfo*)malloc(100 * sizeof(FileInfo));
-    int num_files = 0;
+    //FileInfo* files = (FileInfo*)malloc(100 * sizeof(FileInfo));
+    //int num_files = 0;
 
     // Рекурсивно проверяем целостность директории
+    
+    printf("ROOTID: %d\n", root_record->id);
     int is_integrity_ok = 1;
-    //is_integrity_ok &= check_dir_integrity(db_file, root_record->id, ".", files, &num_files);
+    is_integrity_ok &= check_dir_integrity(db_file, root_record->id, ".", file_info, &num_files);
 
     fclose(db_file);
 
@@ -275,7 +382,6 @@ int check_integrity() {
     else
         printf("Integrity check passed.\n");
 
-    free(files); 
 
     return is_integrity_ok;
 }
@@ -287,26 +393,3 @@ void print_results(FileInfo* files, int num_files) {
         }
     }
 }
-
-int main(int argc, char **argv) {
-    if (argc < 3)
-    {
-        fprintf(stderr, "Usage: integrctrl [-s|-c] <directory_path>\n");
-        exit(EXIT_FAILURE);
-    }
-    if (strcmp(argv[1], "-s") == 0)
-    {
-        save_integrity_info(argv[2]);
-    }
-    else if (strcmp(argv[1], "-c") == 0)
-    {
-        check_integrity(argv[2]);
-    } 
-    else
-    {
-        fprintf(stderr, "Unknown command: %s\n", argv[1]);
-        exit(EXIT_FAILURE);
-    }
-    return EXIT_SUCCESS;
-}
-

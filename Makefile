@@ -1,9 +1,9 @@
 CC = gcc
 
-APP_NAME = integrctrl
-LIB_NAME = LibIntegr
+APP_NAME = Integrctrl
+LIB_NAME = LibIntegrctrl
 
-CFLAGS = -o
+CFLAGS = -Wall
 CPPFLAGS = -I src -MP -MMD
 LDFLAGS = -lcrypto
 LDLIBS =
@@ -42,7 +42,7 @@ $(OBJ_DIR)/%.o: %.c
 .PHONY: run clean
 
 run:
-	./bin/Pwgen
+	./bin/Integrctrl
 
 clean:
 	$(RM) $(APP_PATH) $(OBJ_DIR)/*/*/*.[aod]
