@@ -1,12 +1,8 @@
-Для написания тестов мы можем использовать библиотеку CTest.h. Например, для тестирования функции `md5_hash` можно написать следующий тест:
-
-```c
-#include <ctest.h>
 #include <stdio.h>
+#include "../thirdparty/ctest.h"
 #include <stdlib.h>
 #include <string.h>
-
-#include "integrity.h"
+#include "../src/LibIntegrctrl/libintegrctrl.h"
 
 CTEST(md5_test, md5_hash) {
     char* filename = "test_file.txt";
@@ -22,11 +18,7 @@ CTEST(md5_test, md5_hash) {
     remove(filename);
     free(actual_hash);
 }
-```
 
-Аналогично, для тестирования функций `write_integrity_record` и `read_integrity_record` можно написать следующий тест:
-
-```c
 CTEST(integrity_test, write_and_read_integrity_record) {
     IntegrityRecord record;
     record.id = get_new_id();
@@ -54,11 +46,7 @@ CTEST(integrity_test, write_and_read_integrity_record) {
     free(read_record->md5);
     free(read_record);
 }
-```
 
-Наконец, для тестирования функции `check_dir_integrity` можно написать следующий тест:
-
-```c
 CTEST(integrity_test, check_dir_integrity) {
     // Создаем временную директорию и файлы в ней
     char* dirname = "testdir";

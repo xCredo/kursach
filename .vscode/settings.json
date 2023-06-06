@@ -1,6 +1,8 @@
 {
     "files.associations": {
         "stat.h": "c",
-        "dirent.h": "c"
+        "dirent.h": "c",
+        "stdio.h": "c",
+        "ctest.h": "c"
     }
 }

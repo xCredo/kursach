@@ -7,7 +7,7 @@
 #include <unistd.h>
 #include "../LibIntegrctrl/libintegrctrl.h"
 
-int main()
+int main(int argc, char **argv)
 {
     if (argc < 3)
     {

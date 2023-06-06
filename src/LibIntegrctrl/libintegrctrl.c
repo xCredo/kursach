@@ -1,32 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-// #include <dirent.h>
-// #include <sys/stat.h>
-// #include <openssl/md5.h>
-// #include <unistd.h>
+
 #include "libintegrctrl.h"
-
-// typedef struct {
-//     char filename[MAX_PATH_LEN];
-//     char* md5sum;
-// } FileInfo;
-
-// FileInfo file_info[MAX_NUM_FILES];
-// int num_files = 0;
-
-// typedef struct {
-//     int id;             // Уникальный идентификатор записи
-//     char* name;         // Имя директории или файла
-//     char* type;         // Тип: директория или файл
-//     int parent_id;      // Уникальный идентификатор родительской директории
-//     char* md5;          // Хеш-функция MD5, вычисленная для содержимого файла
-// } IntegrityRecord;
-
-// int get_new_id() {
-//     static int id = 1;  // Счетчик идентификаторов, начинается с 1
-//     return id++;
-// }
 
 char* md5_hash(char* filename) {
     unsigned char digest[MD5_DIGEST_LENGTH];
