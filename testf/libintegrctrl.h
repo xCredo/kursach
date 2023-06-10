@@ -1,6 +1,5 @@
 #ifndef INTEG_ENCE
 #define INTEG_ENCE
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

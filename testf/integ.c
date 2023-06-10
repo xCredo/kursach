@@ -1,7 +1,11 @@
 #include <stdio.h>
 #include <stdlib.h>
+// #include <string.h>
+// #include <dirent.h>
+// #include <sys/stat.h>
+// #include <openssl/md5.h>
 #include <unistd.h>
-#include "../LibIntegrctrl/libintegrctrl.h"
+#include "libintegrctrl.h"
 
 int main(int argc, char **argv)
 {

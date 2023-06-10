@@ -3,6 +3,7 @@
         "stat.h": "c",
         "dirent.h": "c",
         "stdio.h": "c",
-        "ctest.h": "c"
+        "ctest.h": "c",
+        "stdlib.h": "c"
     }
 }
