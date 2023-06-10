@@ -252,10 +252,11 @@ void save_integrity_info(FILE *db_file, char *dir_path, int rootid) {
 
 void get_files(const char *dir_path) {
 	
-	char *local_dir = strrchr(dir_path, '/');
-	if(local_dir==NULL) {
-		local_dir = dir_path-1;
-	}
+    char *local_dir = strrchr(dir_path, '/');
+    if(local_dir==NULL) {
+	local_dir = dir_path-1;
+    }
+
     DIR *dir = opendir(local_dir+1);
     if (dir == NULL) {
         fprintf(stderr, "Error opening directory: %s\n", dir_path);
@@ -275,8 +276,6 @@ void get_files(const char *dir_path) {
         exit(EXIT_FAILURE);
     }
 
-    // Записываем информацию о корневой директории
-
     // Обрабатываем каждый файл или директорию в текущей директории
     struct dirent *ent;
     while ((ent = readdir(dir)) != NULL) {
@@ -294,11 +293,7 @@ void get_files(const char *dir_path) {
         {
             // Вычисляем хеш-функцию MD5 для файла
             char* md5sum = md5_hash(ent->d_name);
-            // Создаем запись для файла
-            // // Запоминаем имя файла и его хеш-функцию для дальнейшей проверки целостности
-            // FileInfo file_info;
-            // snprintf(file_info.filename, sizeof(file_info.filename), "%s/%s", dir_path, ent->d_name);
-            // file_info.md5sum = md5sum;
+
             // Добавляем информацию о файле в массив
             if (num_files < MAX_NUM_FILES)
             {
@@ -327,8 +322,6 @@ int check_integrity(const char* dirpath) {
         exit(EXIT_FAILURE);
     }
     
-    
-    
     if (chdir(dirpath) != 0) {
         fprintf(stderr, "Error changing directory: %s\n", dirpath);
         exit(EXIT_FAILURE);
@@ -344,12 +337,7 @@ int check_integrity(const char* dirpath) {
         exit(EXIT_FAILURE);
     }
 
-    // Создаем массив с информацией о файлах
-    //FileInfo* files = (FileInfo*)malloc(100 * sizeof(FileInfo));
-    //int num_files = 0;
-
-    // Рекурсивно проверяем целостность директории
-    
+    // Рекурсивно проверяем целостность директории 
     printf("ROOTID: %d\n", root_record->id);
     int is_integrity_ok = 1;
     is_integrity_ok &= check_dir_integrity(db_file, root_record->id, ".", file_info, &num_files);
