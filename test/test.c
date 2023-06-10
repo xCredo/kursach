@@ -6,9 +6,6 @@
 #include <openssl/md5.h>
 #include "../src/LibIntegrctrl/libintegrctrl.h"
 
-FileInfo file_inf[MAX_NUM_FILES];
-int num_file = 0;
-
 CTEST(md5_test, md5_hash) {
     char* filename = "test_file.txt";
     FILE* fp = fopen(filename, "w");
